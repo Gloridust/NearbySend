@@ -1,0 +1,28 @@
+[package]
+name = "nearbysend_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+# 异步运行时
+tokio = { version = "1.35.1", features = ["full"] }
+# 蓝牙相关
+btleplug = "0.11.5"
+# 网络传输
+quinn = "0.10.2"
+# 序列化
+serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"
+# 加密
+ring = "0.17.7"
+# 日志
+log = "0.4.20"
+env_logger = "0.10.1"
+# 错误处理
+thiserror = "1.0.56"
+anyhow = "1.0.79"
+# FFI
+safer-ffi = "0.1.3"
