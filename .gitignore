@@ -25,3 +25,25 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+
+# Rust specific ignores
+/target/
+Cargo.lock
+
+# Rust build artifacts
+**/*.rs.bk
+**/*.rs.swp
+**/*.rs.swo
+**/*.rs.swn
+**/*.rs.swp
+**/*.rs.swo
+**/*.rs.swn
+
+# Rust specific tools
+/.vscode/
+/.idea/
+/*.iml
+
+# 编译后的目录
+/rust/target
+
