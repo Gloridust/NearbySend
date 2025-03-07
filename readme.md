@@ -1,14 +1,14 @@
 # NearbySend 📡 💫
 
-<p align="right">
-  <a href="README_CN.md">中文版</a>
+<p align="center">
+  <a href="readme-cn.md">中文版</a>
 </p>
 
 > A cross-platform file transfer application inspired by AirDrop and LocalSend.
 
 NearbySend is a modern, lightweight file transfer application that lets you share files across devices without the need for internet connection or being on the same network. Using a combination of WiFi and Bluetooth technologies, NearbySend provides a seamless AirDrop-like experience across multiple platforms.
 
-![License](https://img.shields.io/github/license/yourusername/nearbysend)
+![License](https://img.shields.io/github/license/Gloridust/nearbysend)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20macOS%20%7C%20Windows-blue)
 
 ## ✨ Features
@@ -41,7 +41,7 @@ NearbySend is a modern, lightweight file transfer application that lets you shar
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/nearbysend.git
+git clone https://github.com/Gloridust/nearbysend.git
 
 # Navigate to the project directory
 cd nearbysend

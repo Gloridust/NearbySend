@@ -1,7 +1,7 @@
 # NearbySend 📡 💫
 
-<p align="right">
-  <a href="README.md">English</a>
+<p align="center">
+  <a href="readme.md">English</a>
 </p>
 
 > 一个受 AirDrop 和 LocalSend 启发的跨平台文件传输应用。
