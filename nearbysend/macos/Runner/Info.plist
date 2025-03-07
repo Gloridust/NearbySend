@@ -28,5 +28,15 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>需要使用蓝牙来发现附近的设备</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>需要使用本地网络来发现附近的设备</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_nearbysend._tcp</string>
+	</array>
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>需要访问文件以便发送和接收</string>
 </dict>
 </plist>

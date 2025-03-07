@@ -1,15 +1,26 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nearbysend/models/device.dart';
 import 'package:nearbysend/models/transfer.dart';
+import 'package:nearbysend/services/providers.dart';
 import 'package:nearbysend/theme/app_theme.dart';
 import 'package:nearbysend/utils/permissions.dart';
 import 'package:nearbysend/widgets/device_card.dart';
 import 'package:nearbysend/widgets/file_item.dart';
 import 'package:nearbysend/widgets/transfer_progress.dart';
+
+/// 选择的文件列表提供者
+final selectedFilesProvider = StateProvider<List<String>>((ref) => []);
+
+/// 是否正在扫描提供者
+final isScanningProvider = StateProvider<bool>((ref) => false);
+
+/// 是否正在传输提供者
+final isTransferringProvider = StateProvider<bool>((ref) => false);
 
 /// 发送页面
 class SendScreen extends ConsumerStatefulWidget {
@@ -21,20 +32,8 @@ class SendScreen extends ConsumerStatefulWidget {
 }
 
 class _SendScreenState extends ConsumerState<SendScreen> {
-  /// 选择的文件列表
-  final List<String> _selectedFiles = [];
-  
-  /// 发现的设备列表
-  final List<Device> _discoveredDevices = [];
-  
   /// 传输列表
   final List<FileTransfer> _transfers = [];
-  
-  /// 是否正在扫描
-  bool _isScanning = false;
-  
-  /// 是否正在传输
-  bool _isTransferring = false;
   
   /// 传输计时器列表
   final List<Timer> _timers = [];
@@ -73,41 +72,12 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   
   /// 开始扫描设备
   void _startScanning() {
-    setState(() {
-      _isScanning = true;
-      
-      // 模拟设备发现
-      _discoveredDevices.clear();
-      _discoveredDevices.addAll([
-        const Device(
-          id: '1',
-          name: 'iPhone 13',
-          deviceType: DeviceType.ios,
-        ),
-        const Device(
-          id: '2',
-          name: 'MacBook Pro',
-          deviceType: DeviceType.macos,
-        ),
-        const Device(
-          id: '3',
-          name: 'Pixel 6',
-          deviceType: DeviceType.android,
-        ),
-        const Device(
-          id: '4',
-          name: 'Surface Laptop',
-          deviceType: DeviceType.windows,
-        ),
-      ]);
-    });
+    ref.read(isScanningProvider.notifier).state = true;
     
-    // 模拟扫描完成
-    Future.delayed(const Duration(seconds: 2), () {
+    // 调用桥接服务开始扫描
+    ref.read(bridgeServiceProvider).startScanning().then((_) {
       if (mounted) {
-        setState(() {
-          _isScanning = false;
-        });
+        ref.read(isScanningProvider.notifier).state = false;
       }
     });
   }
@@ -115,21 +85,66 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   /// 选择文件
   Future<void> _pickFiles() async {
     try {
+      print('开始选择文件...');
+      
+      // 使用FilePicker选择文件，允许所有类型
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.any,
+        dialogTitle: '选择要发送的文件',
+        allowedExtensions: null,
+        withData: false,
+        withReadStream: true,
+        lockParentWindow: true,
+        onFileLoading: (FilePickerStatus status) {
+          print('文件选择状态: $status');
+        },
       );
       
+      print('文件选择结果: $result');
+      
       if (result != null && result.files.isNotEmpty) {
-        setState(() {
-          for (final file in result.files) {
-            if (file.path != null && !_selectedFiles.contains(file.path)) {
-              _selectedFiles.add(file.path!);
-            }
+        final selectedFiles = ref.read(selectedFilesProvider);
+        final newFiles = <String>[];
+        
+        for (final file in result.files) {
+          if (file.path != null && !selectedFiles.contains(file.path)) {
+            newFiles.add(file.path!);
+            print('添加文件: ${file.path}');
+          } else if (file.path != null) {
+            print('文件已在列表中: ${file.path}');
           }
-        });
+        }
+        
+        if (newFiles.isNotEmpty) {
+          ref.read(selectedFilesProvider.notifier).state = [...selectedFiles, ...newFiles];
+          print('已选择 ${newFiles.length} 个文件');
+          
+          // 显示成功消息
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('已选择 ${newFiles.length} 个文件'),
+                backgroundColor: AppTheme.successColor,
+              ),
+            );
+          }
+        } else if (result.files.isNotEmpty) {
+          // 所有选择的文件都已在列表中
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('所选文件已在列表中'),
+                backgroundColor: AppTheme.warningColor,
+              ),
+            );
+          }
+        }
+      } else {
+        print('未选择文件');
       }
     } catch (e) {
+      print('选择文件失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -143,15 +158,17 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   
   /// 删除选择的文件
   void _removeFile(int index) {
-    setState(() {
-      _selectedFiles.removeAt(index);
-    });
+    final selectedFiles = ref.read(selectedFilesProvider);
+    final newFiles = List<String>.from(selectedFiles);
+    newFiles.removeAt(index);
+    ref.read(selectedFilesProvider.notifier).state = newFiles;
   }
   
   /// 连接到设备
-  void _connectToDevice(Device device) {
+  Future<void> _connectToDevice(Device device) async {
     // 检查是否已选择文件
-    if (_selectedFiles.isEmpty) {
+    final selectedFiles = ref.read(selectedFilesProvider);
+    if (selectedFiles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('请先选择要发送的文件'),
@@ -161,32 +178,53 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       return;
     }
     
-    // 更新设备连接状态
-    setState(() {
-      final index = _discoveredDevices.indexWhere((d) => d.id == device.id);
-      if (index != -1) {
-        _discoveredDevices[index] = device.copyWith(isConnected: true);
-      }
+    // 更新传输状态
+    ref.read(isTransferringProvider.notifier).state = true;
+    
+    try {
+      // 获取平台特定的下载路径
+      final downloadPath = await ref.read(bridgeServiceProvider).getDownloadPath();
+      print('使用下载路径: $downloadPath');
       
-      // 模拟传输
-      _isTransferring = true;
+      // 连接到设备
+      await ref.read(bridgeServiceProvider).connectToDevice(device);
       
       // 为每个文件创建传输
-      for (int i = 0; i < _selectedFiles.length; i++) {
-        final file = File(_selectedFiles[i]);
+      for (int i = 0; i < selectedFiles.length; i++) {
+        final file = File(selectedFiles[i]);
+        final fileName = file.uri.pathSegments.last;
+        final targetPath = '$downloadPath/$fileName';
+        
+        print('文件将保存到: $targetPath');
+        
         final transfer = FileTransfer(
           id: 'transfer_${device.id}_$i',
-          fileName: file.uri.pathSegments.last,
+          fileName: fileName,
           fileSize: file.lengthSync(),
           status: TransferStatus.connecting,
+          targetPath: targetPath, // 添加目标路径
         );
         
-        _transfers.add(transfer);
+        setState(() {
+          _transfers.add(transfer);
+        });
         
         // 模拟传输进度
         _simulateTransfer(transfer, i);
       }
-    });
+    } catch (e) {
+      print('连接设备或准备传输失败: $e');
+      ref.read(isTransferringProvider.notifier).state = false;
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('连接失败: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
   }
   
   /// 模拟传输进度
@@ -246,14 +284,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
             );
             
             if (allCompleted) {
-              _isTransferring = false;
-              
-              // 断开设备连接
-              for (int i = 0; i < _discoveredDevices.length; i++) {
-                _discoveredDevices[i] = _discoveredDevices[i].copyWith(
-                  isConnected: false,
-                );
-              }
+              ref.read(isTransferringProvider.notifier).state = false;
             }
           });
           
@@ -287,9 +318,100 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       );
     });
   }
+  
+  /// 将文件复制到目标路径
+  Future<void> _copyFileToTargetPath(FileTransfer transfer) async {
+    if (transfer.targetPath == null) return;
+    
+    try {
+      // 获取源文件路径
+      final selectedFiles = ref.read(selectedFilesProvider);
+      final sourceFilePath = selectedFiles.firstWhere(
+        (path) => path.endsWith(transfer.fileName),
+        orElse: () => '',
+      );
+      
+      if (sourceFilePath.isEmpty) {
+        print('未找到源文件: ${transfer.fileName}');
+        return;
+      }
+      
+      // 获取目标目录路径
+      final targetPath = transfer.targetPath!;
+      final lastSeparator = Platform.isWindows 
+          ? targetPath.lastIndexOf('\\') 
+          : targetPath.lastIndexOf('/');
+      
+      if (lastSeparator == -1) {
+        print('无效的目标路径: $targetPath');
+        return;
+      }
+      
+      final targetDirPath = targetPath.substring(0, lastSeparator);
+      
+      // 创建目标目录
+      final targetDir = Directory(targetDirPath);
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
+      }
+      
+      // 复制文件
+      final sourceFile = File(sourceFilePath);
+      final targetFile = File(targetPath);
+      
+      // 检查源文件是否存在
+      if (!await sourceFile.exists()) {
+        print('源文件不存在: $sourceFilePath');
+        return;
+      }
+      
+      // 检查目标文件是否已存在
+      if (await targetFile.exists()) {
+        // 如果目标文件已存在，先删除它
+        await targetFile.delete();
+      }
+      
+      try {
+        // 尝试复制文件
+        await sourceFile.copy(targetFile.path);
+        print('文件已复制到: ${targetFile.path}');
+        
+        // 在macOS上，尝试打开目标文件所在的文件夹
+        if (Platform.isMacOS) {
+          await Process.run('open', [targetDirPath]);
+        } else if (Platform.isWindows) {
+          await Process.run('explorer', [targetDirPath]);
+        }
+      } catch (e) {
+        print('复制文件失败，尝试使用备用方法: $e');
+        
+        // 备用方法：读取源文件内容并写入目标文件
+        final bytes = await sourceFile.readAsBytes();
+        await targetFile.writeAsBytes(bytes);
+        print('使用备用方法复制文件成功: ${targetFile.path}');
+      }
+    } catch (e) {
+      print('复制文件失败: $e');
+      
+      // 更新传输状态为失败
+      final index = _transfers.indexWhere((t) => t.id == transfer.id);
+      if (index != -1 && mounted) {
+        setState(() {
+          _transfers[index] = _transfers[index].copyWith(
+            status: TransferStatus.failed,
+          );
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isScanning = ref.watch(isScanningProvider);
+    final isTransferring = ref.watch(isTransferringProvider);
+    final selectedFiles = ref.watch(selectedFilesProvider);
+    final devicesAsync = ref.watch(devicesProvider);
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('发送文件'),
@@ -297,7 +419,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
           // 刷新按钮
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _isScanning ? null : _startScanning,
+            onPressed: isScanning ? null : _startScanning,
             tooltip: '刷新设备',
           ),
           
@@ -329,7 +451,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                 const SizedBox(height: 8),
                 
                 // 文件列表
-                if (_selectedFiles.isEmpty)
+                if (selectedFiles.isEmpty)
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -356,10 +478,10 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                     child: ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _selectedFiles.length,
+                      itemCount: selectedFiles.length,
                       itemBuilder: (context, index) {
                         return FileItem(
-                          filePath: _selectedFiles[index],
+                          filePath: selectedFiles[index],
                           onDelete: () => _removeFile(index),
                         );
                       },
@@ -402,7 +524,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                       const SizedBox(width: 8),
                       
                       // 扫描指示器
-                      if (_isScanning)
+                      if (isScanning)
                         const SizedBox(
                           width: 16,
                           height: 16,
@@ -417,34 +539,51 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                 
                 // 设备网格
                 Expanded(
-                  child: _discoveredDevices.isEmpty
-                      ? Center(
+                  child: devicesAsync.when(
+                    data: (devices) {
+                      if (devices.isEmpty) {
+                        return Center(
                           child: Text(
-                            _isScanning ? '正在扫描...' : '未发现设备',
+                            isScanning ? '正在扫描...' : '未发现设备',
                             style: TextStyle(
                               color: AppTheme.textSecondaryColor,
                             ),
                           ),
-                        )
-                      : GridView.builder(
-                          padding: const EdgeInsets.all(16),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 0.8,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                          ),
-                          itemCount: _discoveredDevices.length,
-                          itemBuilder: (context, index) {
-                            final device = _discoveredDevices[index];
-                            return DeviceCard(
-                              device: device,
-                              onTap: _isTransferring
-                                  ? null
-                                  : () => _connectToDevice(device),
-                            );
-                          },
+                        );
+                      }
+                      
+                      return GridView.builder(
+                        padding: const EdgeInsets.all(16),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 0.8,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
                         ),
+                        itemCount: devices.length,
+                        itemBuilder: (context, index) {
+                          final device = devices[index];
+                          return DeviceCard(
+                            device: device,
+                            onTap: isTransferring
+                                ? null
+                                : () => _connectToDevice(device),
+                          );
+                        },
+                      );
+                    },
+                    loading: () => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                    error: (error, stackTrace) => Center(
+                      child: Text(
+                        '加载设备失败: $error',
+                        style: TextStyle(
+                          color: AppTheme.errorColor,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

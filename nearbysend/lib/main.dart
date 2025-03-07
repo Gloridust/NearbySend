@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nearbysend/screens/send_screen.dart';
 import 'package:nearbysend/screens/settings_screen.dart';
+import 'package:nearbysend/services/bridge_service.dart';
 import 'package:nearbysend/theme/app_theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化桥接服务
+  await BridgeService().initialize();
+  
   runApp(
     const ProviderScope(
       child: MyApp(),

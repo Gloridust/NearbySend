@@ -26,6 +26,9 @@ class FileTransfer {
   /// 传输状态
   final TransferStatus status;
   
+  /// 目标保存路径
+  final String? targetPath;
+  
   /// 构造函数
   const FileTransfer({
     required this.id,
@@ -33,6 +36,7 @@ class FileTransfer {
     required this.fileSize,
     this.transferredBytes = 0,
     this.status = TransferStatus.pending,
+    this.targetPath,
   });
   
   /// 复制并修改
@@ -42,6 +46,7 @@ class FileTransfer {
     int? fileSize,
     int? transferredBytes,
     TransferStatus? status,
+    String? targetPath,
   }) {
     return FileTransfer(
       id: id ?? this.id,
@@ -49,6 +54,7 @@ class FileTransfer {
       fileSize: fileSize ?? this.fileSize,
       transferredBytes: transferredBytes ?? this.transferredBytes,
       status: status ?? this.status,
+      targetPath: targetPath ?? this.targetPath,
     );
   }
   
@@ -61,7 +67,8 @@ class FileTransfer {
         other.fileName == fileName &&
         other.fileSize == fileSize &&
         other.transferredBytes == transferredBytes &&
-        other.status == status;
+        other.status == status &&
+        other.targetPath == targetPath;
   }
   
   @override
@@ -70,7 +77,8 @@ class FileTransfer {
         fileName.hashCode ^
         fileSize.hashCode ^
         transferredBytes.hashCode ^
-        status.hashCode;
+        status.hashCode ^
+        targetPath.hashCode;
   }
 }
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nearbysend/services/providers.dart';
 import 'package:nearbysend/theme/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -14,86 +15,21 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  /// 设备名称
-  String _deviceName = '';
-  
-  /// 下载路径
-  String _downloadPath = '';
-  
-  /// 是否自动接收文件
-  bool _autoReceive = false;
-  
-  /// 是否显示通知
-  bool _showNotifications = true;
-  
-  /// 是否保持屏幕常亮
-  bool _keepScreenOn = false;
-  
-  /// 是否使用蓝牙
-  bool _useBluetooth = true;
-  
-  /// 是否使用WiFi
-  bool _useWifi = true;
-  
   @override
   void initState() {
     super.initState();
-    _loadSettings();
-  }
-  
-  /// 加载设置
-  Future<void> _loadSettings() async {
-    // 获取设备名称
-    final deviceName = await _getDeviceName();
-    
-    // 获取下载路径
-    final downloadPath = await _getDownloadPath();
-    
-    // 更新状态
-    setState(() {
-      _deviceName = deviceName;
-      _downloadPath = downloadPath;
-    });
-  }
-  
-  /// 获取设备名称
-  Future<String> _getDeviceName() async {
-    if (Platform.isAndroid) {
-      return 'Android设备';
-    } else if (Platform.isIOS) {
-      return 'iOS设备';
-    } else if (Platform.isMacOS) {
-      return 'Mac设备';
-    } else if (Platform.isWindows) {
-      return 'Windows设备';
-    } else {
-      return '未知设备';
-    }
-  }
-  
-  /// 获取下载路径
-  Future<String> _getDownloadPath() async {
-    try {
-      Directory? directory;
-      
-      if (Platform.isAndroid) {
-        directory = await getExternalStorageDirectory();
-      } else {
-        directory = await getApplicationDocumentsDirectory();
-      }
-      
-      return directory?.path ?? '未知路径';
-    } catch (e) {
-      return '未知路径';
-    }
+    // 初始化桥接服务
+    ref.read(bridgeServiceProvider).initialize();
   }
   
   /// 更改设备名称
   Future<void> _changeDeviceName() async {
+    final currentName = await ref.read(bridgeServiceProvider).getDeviceName();
+    
     final result = await showDialog<String>(
       context: context,
       builder: (context) {
-        String name = _deviceName;
+        String name = currentName;
         
         return AlertDialog(
           title: const Text('更改设备名称'),
@@ -106,7 +42,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onChanged: (value) {
               name = value;
             },
-            controller: TextEditingController(text: _deviceName),
+            controller: TextEditingController(text: currentName),
           ),
           actions: [
             TextButton(
@@ -123,24 +59,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     
     if (result != null && result.isNotEmpty) {
-      setState(() {
-        _deviceName = result;
-      });
-      
       // 保存设备名称
-      // 在实际实现中，应该调用Rust API保存设备名称
+      await ref.read(bridgeServiceProvider).setDeviceName(result);
+      // 刷新设备名称提供者
+      ref.refresh(deviceNameProvider);
     }
   }
   
   /// 更改下载路径
   Future<void> _changeDownloadPath() async {
-    // 在实际实现中，应该使用文件选择器选择下载路径
-    // 这里只是一个模拟实现
+    final currentPath = await ref.read(bridgeServiceProvider).getDownloadPath();
     
     final result = await showDialog<String>(
       context: context,
       builder: (context) {
-        String path = _downloadPath;
+        String path = currentPath;
         
         return AlertDialog(
           title: const Text('更改下载路径'),
@@ -153,7 +86,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onChanged: (value) {
               path = value;
             },
-            controller: TextEditingController(text: _downloadPath),
+            controller: TextEditingController(text: currentPath),
           ),
           actions: [
             TextButton(
@@ -170,17 +103,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     
     if (result != null && result.isNotEmpty) {
-      setState(() {
-        _downloadPath = result;
-      });
-      
       // 保存下载路径
-      // 在实际实现中，应该调用Rust API保存下载路径
+      await ref.read(bridgeServiceProvider).setDownloadPath(result);
+      // 刷新下载路径提供者
+      ref.refresh(downloadPathProvider);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final deviceNameAsync = ref.watch(deviceNameProvider);
+    final downloadPathAsync = ref.watch(downloadPathProvider);
+    final autoReceive = ref.watch(autoReceiveProvider);
+    final showNotifications = ref.watch(showNotificationsProvider);
+    final keepScreenOn = ref.watch(keepScreenOnProvider);
+    final useBluetooth = ref.watch(useBluetoothProvider);
+    final useWifi = ref.watch(useWifiProvider);
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置'),
@@ -194,7 +133,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               // 设备名称
               ListTile(
                 title: const Text('设备名称'),
-                subtitle: Text(_deviceName),
+                subtitle: deviceNameAsync.when(
+                  data: (name) => Text(name),
+                  loading: () => const Text('加载中...'),
+                  error: (error, stackTrace) => Text('加载失败: $error'),
+                ),
                 trailing: const Icon(Icons.edit),
                 onTap: _changeDeviceName,
               ),
@@ -222,7 +165,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               // 下载路径
               ListTile(
                 title: const Text('下载路径'),
-                subtitle: Text(_downloadPath),
+                subtitle: downloadPathAsync.when(
+                  data: (path) => Text(path),
+                  loading: () => const Text('加载中...'),
+                  error: (error, stackTrace) => Text('加载失败: $error'),
+                ),
                 trailing: const Icon(Icons.folder),
                 onTap: _changeDownloadPath,
               ),
@@ -231,11 +178,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               SwitchListTile(
                 title: const Text('自动接收文件'),
                 subtitle: const Text('自动接收来自已知设备的文件'),
-                value: _autoReceive,
+                value: autoReceive,
                 onChanged: (value) {
-                  setState(() {
-                    _autoReceive = value;
-                  });
+                  ref.read(autoReceiveProvider.notifier).state = value;
                 },
               ),
               
@@ -243,11 +188,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               SwitchListTile(
                 title: const Text('使用蓝牙'),
                 subtitle: const Text('使用蓝牙发现设备'),
-                value: _useBluetooth,
+                value: useBluetooth,
                 onChanged: (value) {
-                  setState(() {
-                    _useBluetooth = value;
-                  });
+                  ref.read(useBluetoothProvider.notifier).state = value;
                 },
               ),
               
@@ -255,11 +198,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               SwitchListTile(
                 title: const Text('使用WiFi'),
                 subtitle: const Text('使用WiFi发现设备'),
-                value: _useWifi,
+                value: useWifi,
                 onChanged: (value) {
-                  setState(() {
-                    _useWifi = value;
-                  });
+                  ref.read(useWifiProvider.notifier).state = value;
                 },
               ),
             ],
@@ -273,11 +214,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               SwitchListTile(
                 title: const Text('显示通知'),
                 subtitle: const Text('显示传输通知'),
-                value: _showNotifications,
+                value: showNotifications,
                 onChanged: (value) {
-                  setState(() {
-                    _showNotifications = value;
-                  });
+                  ref.read(showNotificationsProvider.notifier).state = value;
                 },
               ),
               
@@ -285,11 +224,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               SwitchListTile(
                 title: const Text('保持屏幕常亮'),
                 subtitle: const Text('传输过程中保持屏幕常亮'),
-                value: _keepScreenOn,
+                value: keepScreenOn,
                 onChanged: (value) {
-                  setState(() {
-                    _keepScreenOn = value;
-                  });
+                  ref.read(keepScreenOnProvider.notifier).state = value;
                 },
               ),
             ],

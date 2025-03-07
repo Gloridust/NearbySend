@@ -49,6 +49,21 @@ class TransferProgress extends StatelessWidget {
                 _buildStatusLabel(),
               ],
             ),
+            
+            // 目标路径
+            if (transfer.targetPath != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                '保存至: ${transfer.targetPath}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondaryColor,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            
             const SizedBox(height: 12),
             
             // 进度条

@@ -72,9 +72,9 @@ extension DeviceExtension on Device {
   String get iconPath {
     switch (deviceType) {
       case DeviceType.android:
-        return 'assets/icons*/android.png';
+        return 'assets/icons/android.png';
       case DeviceType.ios:
-        return 'assets/icons*/ios.png';
+        return 'assets/icons/ios.png';
       case DeviceType.macos:
         return 'assets/icons/macos.png';
       case DeviceType.windows:
