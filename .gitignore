@@ -47,3 +47,4 @@ Cargo.lock
 # 编译后的目录
 /rust/target
 
+.DS_Store
